@@ -40,19 +40,88 @@ export function getLocation(event: MorgenEvent): string | undefined {
   return first?.name || undefined;
 }
 
+/** ISO 8601 duration ("PT1H30M", "PT24H") as whole minutes. */
+function parseIsoDuration(iso?: string): number | undefined {
+  if (!iso) return undefined;
+  const match = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(iso);
+  if (!match) return undefined;
+  const [, days, hours, minutes, seconds] = match;
+  return (
+    Number(days ?? 0) * 1440 + Number(hours ?? 0) * 60 + Number(minutes ?? 0) + Math.round(Number(seconds ?? 0) / 60)
+  );
+}
+
+/** Milliseconds a zone is ahead of UTC at a given instant. */
+function zoneOffsetMs(instant: number, timeZone: string): number {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts: Record<string, string> = {};
+  for (const { type, value } of formatter.formatToParts(instant)) {
+    parts[type] = value;
+  }
+  const wallClockAsUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    // Intl can emit hour 24 for midnight in some locales.
+    Number(parts.hour) % 24,
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return wallClockAsUtc - instant;
+}
+
+/**
+ * Resolves an event's wall-clock `start` to epoch milliseconds.
+ *
+ * Morgen returns local wall-clock times alongside a separate `timeZone`, so two
+ * copies of one meeting held in different zones carry *different* `start`
+ * strings for the same instant — 16:00 UTC and 11:00 America/Chicago are the
+ * same moment. Comparing the raw strings can never match them.
+ *
+ * Returns undefined for all-day events, which carry no zone.
+ */
+function startInstant(event: MorgenEvent): number | undefined {
+  if (!event.timeZone) return undefined;
+  const asIfUtc = Date.parse(`${event.start}Z`);
+  if (Number.isNaN(asIfUtc)) return undefined;
+  // Two passes: the first offset is looked up at the wrong instant, which only
+  // matters within an hour of a DST transition. The second corrects it.
+  const approximate = asIfUtc - zoneOffsetMs(asIfUtc, event.timeZone);
+  return asIfUtc - zoneOffsetMs(approximate, event.timeZone);
+}
+
 /**
  * Identifies copies of one meeting held in several calendars.
  *
- * Instances of a recurring series share a `uid`, so the instance is part of the
- * key — keying on `uid` alone would collapse a whole series into one row.
+ * Deliberately does *not* use `uid`. Although the API documents it as the
+ * provider's iCalendar UID, in practice each calendar's copy of a meeting
+ * carries its own distinct uid — copies are separate provider-side records
+ * rather than one shared invitation — so it cannot identify duplicates.
+ *
+ * Matching therefore rests on what the copies do agree upon: title, absolute
+ * start instant, and duration. Recurring instances differ in their start and so
+ * remain separate rows.
+ *
+ * Known limitation: two genuinely distinct events sharing a title, instant and
+ * duration are indistinguishable and will be merged. Copies whose titles differ
+ * between providers will not be merged.
  */
 function mergeKey(event: MorgenEvent): string {
-  if (event.uid) {
-    return `uid:${event.uid}|${event.recurrenceId ?? event.start}`;
-  }
-  // No uid: match on visible detail instead. This cannot distinguish two
-  // genuinely separate events that share a title, start and duration.
-  return `detail:${event.title}|${event.start}|${event.duration ?? event.end ?? ""}`;
+  const title = (event.title ?? "").trim().toLowerCase();
+  const duration = parseIsoDuration(event.duration) ?? "";
+  const instant = startInstant(event);
+  // All-day events have no zone, so compare them by calendar date alone.
+  const when = instant === undefined ? `date:${event.start.slice(0, 10)}` : `at:${instant}`;
+  return `${title}|${when}|${duration}`;
 }
 
 function mergeDuplicates(events: MorgenEvent[], calendarMap: Map<string, MorgenCalendar>): EventWithCalendar[] {
