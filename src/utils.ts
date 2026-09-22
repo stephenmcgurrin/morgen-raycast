@@ -174,11 +174,20 @@ export async function fetchEventsForRange(start: string, end: string): Promise<E
     grouped.set(cal.accountId, existing);
   }
 
-  const fetched: MorgenEvent[] = [];
-  for (const [accountId, cals] of grouped) {
-    const calendarIds = cals.map((c) => c.id);
-    fetched.push(...(await listEvents(accountId, calendarIds, start, end)));
-  }
+  // One request per account is the API's floor — `calendarIds` must belong to a
+  // single account — but they need not be sequential. Awaiting inside the loop
+  // made total latency the *sum* of every account's round-trip.
+  const perAccount = await Promise.all(
+    [...grouped].map(([accountId, cals]) =>
+      listEvents(
+        accountId,
+        cals.map((c) => c.id),
+        start,
+        end,
+      ),
+    ),
+  );
+  const fetched = perAccount.flat();
 
   const merged = mergeDuplicates(fetched, calendarMap);
   merged.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
