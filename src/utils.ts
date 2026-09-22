@@ -41,7 +41,7 @@ export async function fetchEventsForRange(start: string, end: string): Promise<E
 
   const calendarMap = new Map<string, MorgenCalendar>();
   for (const cal of calendars) {
-    calendarMap.set(cal.calendarId, cal);
+    calendarMap.set(cal.id, cal);
   }
 
   const grouped = new Map<string, MorgenCalendar[]>();
@@ -53,7 +53,7 @@ export async function fetchEventsForRange(start: string, end: string): Promise<E
 
   const allEvents: EventWithCalendar[] = [];
   for (const [accountId, cals] of grouped) {
-    const calendarIds = cals.map((c) => c.calendarId);
+    const calendarIds = cals.map((c) => c.id);
     const evts = await listEvents(accountId, calendarIds, start, end);
     for (const evt of evts) {
       const cal = calendarMap.get(evt.calendarId);
