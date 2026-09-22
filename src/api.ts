@@ -62,6 +62,14 @@ export interface MorgenParticipant {
 
 export interface MorgenEvent {
   id?: string;
+  /**
+   * The provider's iCalendar UID — not the same as `id`. Stable across copies
+   * of the same meeting in different calendars, whereas `id` is only
+   * meaningful within the account it came from.
+   */
+  uid?: string;
+  /** Present on instances of a recurring series, which share a `uid`. */
+  recurrenceId?: string;
   title: string;
   start: string;
   end?: string;
