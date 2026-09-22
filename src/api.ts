@@ -29,11 +29,22 @@ export async function morgenFetch<T>(path: string, options?: RequestInit): Promi
 }
 
 export interface MorgenCalendar {
+  id: string;
   accountId: string;
-  calendarId: string;
+  integrationId?: string;
   name: string;
   color?: string;
-  readOnly?: boolean;
+  myRights?: {
+    mayReadItems?: boolean;
+    mayWriteAll?: boolean;
+    mayWriteOwn?: boolean;
+  };
+}
+
+export function isWritable(calendar: MorgenCalendar): boolean {
+  const rights = calendar.myRights;
+  if (!rights) return true;
+  return rights.mayWriteAll === true || rights.mayWriteOwn === true;
 }
 
 export interface MorgenLocation {
@@ -73,16 +84,23 @@ export interface MorgenEvent {
 }
 
 interface CalendarsResponse {
-  data: MorgenCalendar[];
+  data?: { calendars?: MorgenCalendar[] };
 }
 
 interface EventsResponse {
-  data: MorgenEvent[];
+  data?: { events?: MorgenEvent[] };
+}
+
+function expectArray<T>(value: T[] | undefined, path: string): T[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Unexpected Morgen API response: expected ${path} to be an array`);
+  }
+  return value;
 }
 
 export async function listCalendars(): Promise<MorgenCalendar[]> {
   const result = await morgenFetch<CalendarsResponse>("/calendars/list");
-  return result.data ?? [];
+  return expectArray(result.data?.calendars, "data.calendars");
 }
 
 export async function listEvents(
@@ -98,7 +116,7 @@ export async function listEvents(
     end,
   });
   const result = await morgenFetch<EventsResponse>(`/events/list?${params.toString()}`);
-  return result.data ?? [];
+  return expectArray(result.data?.events, "data.events");
 }
 
 export interface CreateEventPayload {
@@ -112,9 +130,13 @@ export interface CreateEventPayload {
 }
 
 export async function createEvent(payload: CreateEventPayload): Promise<MorgenEvent> {
-  const result = await morgenFetch<{ data: MorgenEvent }>("/events/create", {
+  const result = await morgenFetch<{ data?: { event?: MorgenEvent } }>("/events/create", {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  return result.data;
+  const event = result.data?.event;
+  if (!event) {
+    throw new Error("Unexpected Morgen API response: expected data.event");
+  }
+  return event;
 }

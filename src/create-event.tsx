@@ -1,6 +1,6 @@
 import { ActionPanel, Action, Form, showHUD, showToast, Toast, Icon } from "@raycast/api";
 import { useEffect, useState } from "react";
-import { createEvent, listCalendars, MorgenCalendar } from "./api";
+import { createEvent, isWritable, listCalendars, MorgenCalendar } from "./api";
 
 const DURATION_OPTIONS = [
   { title: "15 minutes", value: "PT15M" },
@@ -29,7 +29,7 @@ export default function CreateEvent() {
     async function fetchCalendars() {
       try {
         const cals = await listCalendars();
-        setCalendars(cals.filter((c) => !c.readOnly));
+        setCalendars(cals.filter(isWritable));
       } catch (error) {
         await showToast({
           style: Toast.Style.Failure,
@@ -53,7 +53,7 @@ export default function CreateEvent() {
       return;
     }
 
-    const calendar = calendars.find((c) => `${c.accountId}::${c.calendarId}` === values.calendar);
+    const calendar = calendars.find((c) => `${c.accountId}::${c.id}` === values.calendar);
     if (!calendar) {
       await showToast({ style: Toast.Style.Failure, title: "Invalid calendar selection" });
       return;
@@ -76,7 +76,7 @@ export default function CreateEvent() {
       await showToast({ style: Toast.Style.Animated, title: "Creating event..." });
       await createEvent({
         accountId: calendar.accountId,
-        calendarId: calendar.calendarId,
+        calendarId: calendar.id,
         title: values.title.trim(),
         start: startISO,
         duration: values.duration,
@@ -116,9 +116,9 @@ export default function CreateEvent() {
       <Form.Dropdown id="calendar" title="Calendar">
         {calendars.map((cal) => (
           <Form.Dropdown.Item
-            key={`${cal.accountId}::${cal.calendarId}`}
+            key={`${cal.accountId}::${cal.id}`}
             title={cal.name}
-            value={`${cal.accountId}::${cal.calendarId}`}
+            value={`${cal.accountId}::${cal.id}`}
           />
         ))}
       </Form.Dropdown>
