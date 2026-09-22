@@ -1,6 +1,6 @@
 import { List, Icon } from "@raycast/api";
 import { useEffect, useState } from "react";
-import { EventWithCalendar, formatDateTime, computeDuration, getConferenceUrl, fetchEventsWithErrorHandling } from "./utils";
+import { EventWithCalendar, formatDateTime, computeDuration, getConferenceUrl, fetchEventsWithErrorHandling, formatCalendarLabel } from "./utils";
 import { EventActions } from "./event-actions";
 
 export default function SearchEvents() {
@@ -43,7 +43,7 @@ export default function SearchEvents() {
           const duration = computeDuration(event.start, event.end);
           const accessories = [
             ...(getConferenceUrl(event) ? [{ icon: Icon.Video }] : []),
-            { text: event.calendarName },
+            { text: formatCalendarLabel(event) },
             ...(duration ? [{ text: duration }] : []),
           ];
 
